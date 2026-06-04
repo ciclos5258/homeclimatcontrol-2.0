@@ -322,7 +322,6 @@ def serve_frontend_assets(filename):
 
 if __name__ == '__main__':
     init_db()
-    # Запускаем MQTT в фоновом потоке (по желанию)
-    # threading.Thread(target=start_mqtt, daemon=True).start()
+    threading.Thread(target=start_mqtt, daemon=True).start()
     print("🚀 Flask API server running on port 5002")
     app.run(host='0.0.0.0', port=5002, debug=False)
