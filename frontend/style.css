@@ -1,0 +1,343 @@
+/* ===== Глобальные переменные (Светлая тема по умолчанию) ===== */
+    :root {
+      --bg: #F5F7FA;
+      --card-bg: #FFFFFF;
+      --text: #1A1A1A;
+      --text-secondary: #64748B;
+      --accent: #2563EB;
+      --accent-light: #DBEAFE;
+      --shadow: 0 2px 8px rgba(0,0,0,0.06);
+      --border: #E2E8F0;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --header-bg: #FFFFFF;
+      --tab-bg: #FFFFFF;
+      --tab-active-bg: #2563EB;
+      --tab-active-text: #FFFFFF;
+      --tab-inactive-text: #64748B;
+      --bottom-bar-bg: #FFFFFF;
+      --radius: 12px;
+      --transition: 0.2s ease;
+    }
+
+    /* Тёмная тема (активируется классом на html) */
+    html.dark {
+      --bg: #0F172A;
+      --card-bg: #1E293B;
+      --text: #E2E8F0;
+      --text-secondary: #94A3B8;
+      --accent: #3B82F6;
+      --accent-light: #1E3A5F;
+      --shadow: 0 2px 8px rgba(0,0,0,0.4);
+      --border: #334155;
+      --header-bg: #1E293B;
+      --tab-bg: #1E293B;
+      --tab-active-bg: #3B82F6;
+      --tab-active-text: #FFFFFF;
+      --tab-inactive-text: #94A3B8;
+      --bottom-bar-bg: #1E293B;
+    }
+
+    /* ===== Базовые сбросы ===== */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      transition: background var(--transition), color var(--transition);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ===== Верхняя панель ===== */
+    .header {
+      background: var(--header-bg);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      transition: background var(--transition);
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 1.25rem;
+    }
+    .logo svg { width: 24px; height: 24px; fill: var(--accent); }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .current-time {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+    .theme-toggle {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: var(--text);
+      transition: background var(--transition);
+    }
+    .theme-toggle:hover { background: var(--accent-light); }
+
+    /* ===== Основной контейнер ===== */
+    .app-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 20px 20px 0;
+    }
+
+    /* ===== Вкладки (десктоп) ===== */
+    .tabs-desktop {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      padding: 12px 20px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--tab-inactive-text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .tab-btn.active {
+      color: var(--tab-active-text);
+      background: var(--tab-active-bg);
+      border-radius: 8px 8px 0 0;
+      border-bottom-color: transparent;
+    }
+    .tab-btn:not(.active):hover {
+      color: var(--text);
+      background: var(--accent-light);
+    }
+    .tab-icon { width: 18px; height: 18px; }
+
+    /* Нижняя панель для мобильных (скрыта на десктопе) */
+    .bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bottom-bar-bg);
+      border-top: 1px solid var(--border);
+      padding: 8px 16px;
+      justify-content: space-around;
+      z-index: 20;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+    }
+    .nav-item {
+      background: none;
+      border: none;
+      color: var(--tab-inactive-text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.7rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      transition: all var(--transition);
+    }
+    .nav-item.active {
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+    .nav-item svg { width: 22px; height: 22px; }
+
+    /* ===== Контент вкладок ===== */
+    .tab-content {
+      display: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    .tab-content.active {
+      display: block;
+      opacity: 1;
+    }
+
+    /* ===== Карточки ===== */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      transition: background var(--transition), box-shadow var(--transition);
+    }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .card-title {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .card-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+    .card-description {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    .trend {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .trend.up { color: var(--danger); }   /* температура растет -> красный? Условимся: рост температуры - оранж, падение - синий. Но пусть будет семантически */
+    .trend.down { color: var(--accent); }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 0.9rem;
+    }
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: pulse 2s infinite;
+    }
+    .status-dot.offline { background: var(--danger); animation: none; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+    /* ===== Графики-заглушки ===== */
+    .chart-placeholder {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+      height: 300px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+
+    /* Кнопки периода */
+    .period-selector {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .period-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      color: var(--text);
+      transition: all var(--transition);
+    }
+    .period-btn.active, .period-btn:hover {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+
+    /* Настройки */
+    .settings-group {
+      margin-bottom: 24px;
+    }
+    .settings-group label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    input[type="range"] { flex: 1; }
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 26px;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider-round {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc;
+      transition: .3s;
+      border-radius: 34px;
+    }
+    .slider-round:before {
+      position: absolute;
+      content: "";
+      height: 20px; width: 20px;
+      left: 3px; bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider-round { background-color: var(--accent); }
+    input:checked + .slider-round:before { transform: translateX(22px); }
+
+    /* Адаптивность */
+    @media (max-width: 767px) {
+      .header { padding: 10px 16px; }
+      .logo { font-size: 1rem; }
+      .current-time { display: none; }
+      .tabs-desktop { display: none; }
+      .bottom-nav { display: flex; }
+      .app-container { padding: 16px 16px 80px; } /* отступ под нижний бар */
+      .card-value { font-size: 2rem; }
+      .cards-grid { grid-template-columns: 1fr; }
+      .chart-placeholder { height: 220px; }
+    }
+    @media (min-width: 768px) {
+      .bottom-nav { display: none; }
+    }

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Climat Monitor v2</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Библиотека chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Подключаем современный шрифт Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="header">
+    <div class="logo">
+      <!-- SVG иконка термометра -->
+      <svg viewBox="0 0 24 24"><path d="M15 13V5A3 3 0 0 0 9 5V13A5 5 0 1 0 15 13M12 4A1 1 0 0 1 13 5V8H11V5A1 1 0 0 1 12 4Z"/></svg>
+      Climat Monitor
+    </div>
+    <div class="header-right">
+      <span class="current-time" id="liveTime">--:--</span>
+      <button class="theme-toggle" id="themeToggle">
+        <span>🌙</span> Тёмная
+      </button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <!-- Десктопные вкладки -->
+    <div class="tabs-desktop" id="desktopTabs">
+      <button class="tab-btn active" data-tab="overview">
+        <svg class="tab-icon" viewBox="0 0 24 24"><path d="M12 2L2 22H22L12 2Z" fill="currentColor"/></svg> Обзор
+      </button>
+      <button class="tab-btn" data-tab="history">
+        <svg class="tab-icon" viewBox="0 0 24 24"><path d="M3 3V21H21" stroke="currentColor" stroke-width="2" fill="none"/></svg> История
+      </button>
+      <button class="tab-btn" data-tab="stats">
+        <svg class="tab-icon" viewBox="0 0 24 24"><rect x="3" y="10" width="4" height="10" fill="currentColor"/><rect x="10" y="5" width="4" height="15" fill="currentColor"/><rect x="17" y="13" width="4" height="7" fill="currentColor"/></svg> Статистика
+      </button>
+      <button class="tab-btn" data-tab="settings">
+        <svg class="tab-icon" viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5 3.5 3.5 0 0 1 15.5 12 3.5 3.5 0 0 1 12 15.5M19.43 12.97C19.47 12.65 19.5 12.33 19.5 12S19.47 11.35 19.43 11.03L21.54 9.38C21.73 9.22 21.78 8.95 21.66 8.73L19.66 5.27C19.54 5.05 19.27 4.97 19.05 5.05L16.57 6.05C16.08 5.67 15.5 5.37 14.87 5.19L14.5 2.5C14.46 2.24 14.22 2.05 13.95 2.05H10.05C9.78 2.05 9.54 2.24 9.5 2.5L9.13 5.19C8.5 5.37 7.92 5.67 7.43 6.05L4.95 5.05C4.73 4.97 4.46 5.05 4.34 5.27L2.34 8.73C2.21 8.95 2.27 9.22 2.46 9.38L4.57 11.03C4.53 11.35 4.5 11.67 4.5 12S4.53 12.65 4.57 12.97L2.46 14.62C2.27 14.78 2.21 15.05 2.34 15.27L4.34 18.73C4.46 18.95 4.73 19.03 4.95 18.95L7.43 17.95C7.92 18.33 8.5 18.63 9.13 18.81L9.5 21.5C9.54 21.76 9.78 21.95 10.05 21.95H13.95C14.22 21.95 14.46 21.76 14.5 21.5L14.87 18.81C15.5 18.63 16.08 18.33 16.57 17.95L19.05 18.95C19.27 19.03 19.54 18.95 19.66 18.73L21.66 15.27C21.78 15.05 21.73 14.78 21.54 14.62L19.43 12.97Z" fill="currentColor"/></svg> Настройки
+      </button>
+    </div>
+
+    <!-- Содержимое вкладок -->
+    <!-- Обзор -->
+    <div class="tab-content active" id="overview">
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-title">🌡️ Температура</div>
+          <div class="card-value">23.4°C</div>
+          <div class="card-description">Комфортно</div>
+          <div class="trend up">▲ 0.8° за 15 мин</div>
+        </div>
+        <div class="card">
+          <div class="card-title">💧 Влажность</div>
+          <div class="card-value">48%</div>
+          <div class="card-description">Нормальная</div>
+          <div class="trend down">▼ 2% за 15 мин</div>
+        </div>
+        <div class="card">
+          <div class="card-title">📡 Статус</div>
+          <div class="status-indicator">
+            <span class="status-dot"></span> ESP32 онлайн
+          </div>
+          <div class="card-description" style="margin-top:8px;">Обновлено 3 сек. назад</div>
+        </div>
+      </div>
+      <!-- Мини-график (заглушка) -->
+      <div class="chart-placeholder">
+        [ Мини-график за последний час — спарклайн ]
+      </div>
+    </div>
+
+    <!-- История -->
+    <div class="tab-content" id="history">
+      <div class="period-selector">
+        <button class="period-btn active">1ч</button>
+        <button class="period-btn">6ч</button>
+        <button class="period-btn">24ч</button>
+        <button class="period-btn">7д</button>
+        <button class="period-btn">30д</button>
+      </div>
+      <div class="chart-placeholder"><canvas id="sparklineCanvas"></canvas></div>
+      <div class="chart-placeholder"><canvas id="sparklineCanvas"></canvas></div>
+      <div style="text-align:right; margin-bottom:20px;">
+        <button class="period-btn">📥 CSV</button>
+        <button class="period-btn">📄 PDF</button>
+      </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="tab-content" id="stats">
+      <div class="period-selector">
+        <button class="period-btn active">Сегодня</button>
+        <button class="period-btn">Неделя</button>
+        <button class="period-btn">Месяц</button>
+      </div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-title">Средняя t°</div>
+          <div class="card-value">22.8°</div>
+          <div class="trend up">▲ 1.2° vs прошлый период</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Мин. / Макс. t°</div>
+          <div class="card-value">19.2° / 27.5°</div>
+          <div class="card-description">Зафиксированы в 04:12 / 14:30</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Средняя влажн.</div>
+          <div class="card-value">51%</div>
+          <div class="trend down">▼ 3% vs прошлый период</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Выходов за порог</div>
+          <div class="card-value">2</div>
+          <div class="card-description">Температура выше 26°</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Настройки -->
+    <div class="tab-content" id="settings">
+      <div class="card" style="margin-bottom:20px;">
+        <div class="settings-group">
+          <label>🌡️ Порог температуры: мин 18°C – макс 28°C</label>
+          <div class="slider-container">
+            <input type="range" min="0" max="50" value="18" id="tempMin">
+            <input type="range" min="0" max="50" value="28" id="tempMax">
+          </div>
+        </div>
+        <div class="settings-group">
+          <label>💧 Порог влажности: мин 30% – макс 70%</label>
+          <div class="slider-container">
+            <input type="range" min="0" max="100" value="30" id="humMin">
+            <input type="range" min="0" max="100" value="70" id="humMax">
+          </div>
+        </div>
+        <button class="period-btn active" style="margin-top:8px;">Сохранить пороги</button>
+      </div>
+
+      <div class="card" style="margin-bottom:20px;">
+        <div class="settings-group">
+          <label>🔔 Telegram-уведомления</label>
+          <label class="toggle-switch">
+            <input type="checkbox" checked>
+            <span class="slider-round"></span>
+          </label>
+        </div>
+        <div class="settings-group">
+          <label>🆔 Chat ID</label>
+          <input type="text" value="123456789" style="padding:8px; border-radius:8px; border:1px solid var(--border); width:100%; background:var(--card-bg); color:var(--text);">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="settings-group">
+          <label>ℹ️ Система</label>
+          <p>Версия прошивки: 1.2.3</p>
+          <p>IP ESP32: 192.168.1.42</p>
+          <p>Время работы: 5д 12ч 33м</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Нижняя панель навигации (мобильные) -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-item active" data-tab="overview">
+      <svg viewBox="0 0 24 24"><path d="M12 2L2 22H22L12 2Z" fill="currentColor"/></svg>
+      <span>Обзор</span>
+    </button>
+    <button class="nav-item" data-tab="history">
+      <svg viewBox="0 0 24 24"><path d="M3 3V21H21" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+      <span>История</span>
+    </button>
+    <button class="nav-item" data-tab="stats">
+      <svg viewBox="0 0 24 24"><rect x="3" y="10" width="4" height="10" fill="currentColor"/><rect x="10" y="5" width="4" height="15" fill="currentColor"/><rect x="17" y="13" width="4" height="7" fill="currentColor"/></svg>
+      <span>Статистика</span>
+    </button>
+    <button class="nav-item" data-tab="settings">
+      <svg viewBox="0 0 24 24"><path d="M12 15.5...Z" fill="currentColor"/></svg>
+      <span>Настройки</span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+  <script src="chart.js"></script>
+
+
+</body>
+</html>

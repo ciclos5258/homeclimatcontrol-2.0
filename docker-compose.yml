@@ -1,0 +1,50 @@
+version: '3.8'
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: climat_db
+    environment:
+      POSTGRES_USER: climat
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: climat_monitor
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U climat -d climat_monitor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  web:
+    build: .
+    container_name: climat_web
+    ports:
+      - "5002:5002"
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/backend
+      - ./frontend:/frontend
+    environment:
+      DATABASE_URL: postgresql://climat:secret@db:5432/climat_monitor
+      MQTT_BROKER: localhost
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s   # даём время на инициализацию БД
+    restart: unless-stopped
+  db-init:
+    build: .
+    container_name: climat_db_init
+    depends_on:
+      db:
+        condition: service_healthy   # Ждём здоровую БД
+    environment:
+      DATABASE_URL: postgresql://climat:secret@db:5432/climat_monitor
+    command: python /backend/generate_test_data.py   # путь
+    restart: "no"
+volumes:
+  pgdata:
