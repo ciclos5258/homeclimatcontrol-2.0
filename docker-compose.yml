@@ -34,17 +34,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 20s   # даём время на инициализацию БД
+      start_period: 20s
     restart: unless-stopped
-  db-init:
-    build: .
-    container_name: climat_db_init
-    depends_on:
-      db:
-        condition: service_healthy   # Ждём здоровую БД
-    environment:
-      DATABASE_URL: postgresql://climat:secret@db:5432/climat_monitor
-    command: python /backend/generate_test_data.py   # путь
-    restart: "no"
 volumes:
   pgdata:

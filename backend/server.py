@@ -147,32 +147,71 @@ def get_all_data():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        if start_time:
-            cur.execute("""
-                SELECT time, temperature, humidity
-                FROM sensor_readings
-                WHERE device_id = %s AND time >= %s
-                ORDER BY time ASC
-            """, (device, start_time))
+        
+        # Для длинных периодов используем агрегацию по дням
+        if period in ('7d', '30d', 'all'):
+            if start_time:
+                cur.execute("""
+                    SELECT
+                        time_bucket('1 day', time) AS day,
+                        AVG(temperature) AS temperature,
+                        AVG(humidity) AS humidity
+                    FROM sensor_readings
+                    WHERE device_id = %s AND time >= %s
+                    GROUP BY day
+                    ORDER BY day ASC
+                """, (device, start_time))
+            else:
+                cur.execute("""
+                    SELECT
+                        time_bucket('1 day', time) AS day,
+                        AVG(temperature) AS temperature,
+                        AVG(humidity) AS humidity
+                    FROM sensor_readings
+                    WHERE device_id = %s
+                    GROUP BY day
+                    ORDER BY day ASC
+                """, (device,))
+            rows = cur.fetchall()
+            # Приводим к единому формату: timestamp, temperature, humidity
+            data = [
+                {
+                    "timestamp": row["day"].isoformat(),
+                    "temperature": round(row["temperature"], 2) if row["temperature"] is not None else None,
+                    "humidity": round(row["humidity"], 2) if row["humidity"] is not None else None
+                }
+                for row in rows
+            ]
         else:
-            cur.execute("""
-                SELECT time, temperature, humidity
-                FROM sensor_readings
-                WHERE device_id = %s
-                ORDER BY time ASC
-            """, (device,))
-        rows = cur.fetchall()
-        return jsonify({
-            "success": True,
-            "data": [
+            # Сырые данные для коротких периодов
+            if start_time:
+                cur.execute("""
+                    SELECT time, temperature, humidity
+                    FROM sensor_readings
+                    WHERE device_id = %s AND time >= %s
+                    ORDER BY time ASC
+                """, (device, start_time))
+            else:
+                cur.execute("""
+                    SELECT time, temperature, humidity
+                    FROM sensor_readings
+                    WHERE device_id = %s
+                    ORDER BY time ASC
+                """, (device,))
+            rows = cur.fetchall()
+            data = [
                 {
                     "timestamp": row["time"].isoformat(),
                     "temperature": row["temperature"],
                     "humidity": row["humidity"]
                 }
                 for row in rows
-            ],
-            "count": len(rows)
+            ]
+
+        return jsonify({
+            "success": True,
+            "data": data,
+            "count": len(data)
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
