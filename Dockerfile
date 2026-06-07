@@ -18,4 +18,5 @@ COPY frontend/ ./frontend/
 EXPOSE 5002
 
 # Команда запуска при старте контейнера
-CMD ["python", "backend/server.py"]
+RUN pip install gunicorn
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "backend.server:app"]
