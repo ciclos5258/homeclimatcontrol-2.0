@@ -1,5 +1,9 @@
-```markdown
 [eng английская версия] (readbme.md)
+
+---
+
+```markdown
+
 ---
 # 🌡️ Climat Monitor — IoT система мониторинга климата (Docker + TimescaleDB)
 
