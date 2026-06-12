@@ -1,42 +1,57 @@
 version: '3.8'
+
 services:
   db:
     image: timescale/timescaledb:latest-pg16
     container_name: climat_db
+    restart: always
     environment:
       POSTGRES_USER: climat
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: climat_monitor
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U climat -d climat_monitor"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+
   web:
     build: .
     container_name: climat_web
-    ports:
-      - "5002:5002"
+    restart: always
     depends_on:
       db:
-         condition: service_healthy
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://climat:secret@db:5432/climat_monitor
+      # Если MQTT брокер не в докере, оставьте реальный IP
+      MQTT_BROKER: localhost   # измените, если надо
+    networks:
+      - app-network
+    # Порты НЕ публикуем, т.к. трафик пойдёт через nginx
+
+  nginx:
+    image: nginx:latest
+    container_name: climat_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"   # для HTTPS потом
     volumes:
-      - ./backend:/backend
-      - ./frontend:/frontend
-    env_file:
-      - ./backend/.env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5002/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    restart: unless-stopped
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Для HTTPS позже добавьте монтирование сертификатов
+    depends_on:
+      - web
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
 volumes:
   pgdata:
