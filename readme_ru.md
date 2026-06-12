@@ -1,5 +1,5 @@
 ---
-[eng английская версия](readme.md)
+[eng Read in english](readme.md)
 
 ```markdown
 
