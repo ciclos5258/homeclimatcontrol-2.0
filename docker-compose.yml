@@ -22,13 +22,15 @@ services:
     ports:
       - "5002:5002"
     depends_on:
-      - db
+      db:
+         condition: service_healthy
     volumes:
       - ./backend:/backend
       - ./frontend:/frontend
-    environment:
-      DATABASE_URL: postgresql://climat:secret@db:5432/climat_monitor
-      MQTT_BROKER: localhost
+    env_file:
+      - ./backend/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5002/api/health"]
       interval: 10s
