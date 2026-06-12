@@ -1,8 +1,5 @@
----
-
-[ru Читать на русском](readme_ru.md)
-
 ```markdown
+
 # 🌡️ Climat Monitor — IoT Climate Monitoring System (Docker + TimescaleDB)
 
 A production-grade IoT system for remote temperature and humidity monitoring.  
@@ -252,3 +249,4 @@ The backend will try to connect to a local PostgreSQL instance (set `DATABASE_UR
 ## Licence
 
 MIT
+```
