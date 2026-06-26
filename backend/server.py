@@ -22,7 +22,7 @@ MQTT_BROKER = os.environ.get('MQTT_BROKER', 'localhost')
 MQTT_PORT = int(os.environ.get('MQTT_PORT', '1883'))
 MQTT_TOPIC = os.environ.get('MQTT_TOPIC', 'esp32/sensors')
 
-FRONTEND_DIR = '/frontend'
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
 
 def get_db_connection():
     """Создаёт и возвращает новое подключение к PostgreSQL."""

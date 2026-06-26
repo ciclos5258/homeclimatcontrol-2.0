@@ -9,15 +9,39 @@ services:
       POSTGRES_USER: climat
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: climat_monitor
+    ports:
+      - "5432:5432" # Пробрасываем порт, если нужно подключаться с хоста
     volumes:
       - pgdata:/var/lib/postgresql/data
-    networks:
-      - app-network
+      - ./init-db:/docker-entrypoint-initdb.d # Монтируем скрипты инициализации
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U climat -d climat_monitor"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  mqtt_listener:
+    build:
+      context: .
+      dockerfile: Dockerfile.listener # Создадим отдельный Dockerfile для слушателя
+    container_name: climat_mqtt_listener
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy # Ждем, пока БД будет готова
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: climat_monitor
+      DB_USER: climat
+      DB_PASSWORD: secret
+      MQTT_BROKER: 172.17.0.1 # IP MQTT-брокера
+      MQTT_PORT: 1883
+      MQTT_TOPIC: "esp32/sensors"
+      MQTT_USER: climat
+      MQTT_PASSWORD: password
+    networks:
+      - app-network
 
   web:
     build: .

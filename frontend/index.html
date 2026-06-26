@@ -50,28 +50,26 @@
       <div class="cards-grid">
         <div class="card">
           <div class="card-title">🌡️ Температура</div>
-          <div class="card-value">23.4°C</div>
-          <div class="card-description">Комфортно</div>
-          <div class="trend up">▲ 0.8° за 15 мин</div>
+          <div class="card-value" id="tempValue">--°C</div>
+          <div class="card-description" id="tempDesc">—</div>
+          <div class="trend up" id="tempTrend">▲ —</div>
         </div>
         <div class="card">
           <div class="card-title">💧 Влажность</div>
-          <div class="card-value">48%</div>
-          <div class="card-description">Нормальная</div>
-          <div class="trend down">▼ 2% за 15 мин</div>
+          <div class="card-value" id="humValue">--%</div>
+          <div class="card-description" id="humDesc">—</div>
+          <div class="trend down" id="humTrend">▼ —</div>
         </div>
         <div class="card">
           <div class="card-title">📡 Статус</div>
           <div class="status-indicator">
-            <span class="status-dot"></span> ESP32 онлайн
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">ESP32 —</span>
           </div>
-          <div class="card-description" style="margin-top:8px;">Обновлено 3 сек. назад</div>
+          <div class="card-description" style="margin-top:8px;" id="updatedAgo">Обновлено: —</div>
         </div>
       </div>
-      <!-- Мини-график (заглушка) -->
-      <div class="chart-placeholder">
-        [ Мини-график за последний час — спарклайн ]
-      </div>
+      <div class="chart-placeholder"></div>
     </div>
 
     <!-- История -->
@@ -83,8 +81,8 @@
         <button class="period-btn">7д</button>
         <button class="period-btn">30д</button>
       </div>
-      <div class="chart-placeholder"><canvas id="sparklineCanvas"></canvas></div>
-      <div class="chart-placeholder"><canvas id="sparklineCanvas"></canvas></div>
+      <div class="chart-placeholder"></div>
+      <div class="chart-placeholder"></div>
       <div style="text-align:right; margin-bottom:20px;">
         <button class="period-btn">📥 CSV</button>
         <button class="period-btn">📄 PDF</button>
@@ -159,9 +157,9 @@
       <div class="card">
         <div class="settings-group">
           <label>ℹ️ Система</label>
-          <p>Версия прошивки: 1.2.3</p>
-          <p>IP ESP32: 192.168.1.42</p>
-          <p>Время работы: 5д 12ч 33м</p>
+          <p>Версия прошивки: 2.0</p>
+          <p>Климатическая станция: 1</p>
+          <p>Время работы: Work in progress</p>
         </div>
       </div>
     </div>

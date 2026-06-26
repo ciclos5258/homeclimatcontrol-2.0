@@ -50,3 +50,48 @@
         this.classList.add('active');
       });
     });
+
+    // Периодическое получение последних показаний для обзора
+    async function fetchLatest() {
+      try {
+        const resp = await fetch('/api/latest');
+        if (!resp.ok) return null;
+        const j = await resp.json();
+        if (!j.success) return null;
+        return j.data;
+      } catch (e) {
+        console.warn('Ошибка fetchLatest', e);
+        return null;
+      }
+    }
+
+    async function updateOverview() {
+      const latest = await fetchLatest();
+      if (!latest) {
+        document.getElementById('tempValue').textContent = '--°C';
+        document.getElementById('humValue').textContent = '--%';
+        document.getElementById('statusText').textContent = 'ESP32 —';
+        document.getElementById('updatedAgo').textContent = 'Обновлено: —';
+        document.getElementById('statusDot').classList.add('offline');
+        return;
+      }
+
+      const t = latest.temperature;
+      const h = latest.humidity;
+      const ts = new Date(latest.timestamp);
+      document.getElementById('tempValue').textContent = (t !== null ? t.toFixed(1) + '°C' : '—');
+      document.getElementById('humValue').textContent = (h !== null ? Math.round(h) + '%' : '—');
+      const ageSec = Math.floor((Date.now() - ts.getTime()) / 1000);
+      document.getElementById('updatedAgo').textContent = `Обновлено: ${ageSec}s`;
+      if (ageSec < 20) {
+        document.getElementById('statusText').textContent = 'ESP32 онлайн';
+        document.getElementById('statusDot').classList.remove('offline');
+      } else {
+        document.getElementById('statusText').textContent = 'ESP32 офлайн';
+        document.getElementById('statusDot').classList.add('offline');
+      }
+    }
+
+    // Запускаем обновление обзора каждые 3 секунды
+    setInterval(updateOverview, 3000);
+    updateOverview();
