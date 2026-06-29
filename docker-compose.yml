@@ -52,8 +52,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://climat:secret@db:5432/climat_monitor
-      # Если MQTT брокер не в докере, оставьте реальный IP
-      MQTT_BROKER: localhost   # измените, если надо
+
+      MQTT_BROKER: 91.199.154.71
     networks:
       - app-network
     # Порты НЕ публикуем, т.к. трафик пойдёт через nginx
@@ -63,11 +63,10 @@ services:
     container_name: climat_nginx
     restart: always
     ports:
-      - "8080:80"
-      - "443:443"   # для HTTPS потом
+      - "127.0.0.1:8080:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      # Для HTTPS позже добавьте монтирование сертификатов
+      # Для HTTPS
     depends_on:
       - web
     networks:
