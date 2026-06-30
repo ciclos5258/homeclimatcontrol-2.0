@@ -1,3 +1,5 @@
+[Версия на русском](readme_ru.md)
+
 # 🌡️ Climat Monitor — IoT Climate Monitoring System (Docker + TimescaleDB)
 
 A production-grade IoT system for remote temperature and humidity monitoring.  
