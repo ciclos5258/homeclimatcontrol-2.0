@@ -9,6 +9,8 @@ services:
       POSTGRES_USER: climat
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: climat_monitor
+    networks:
+      - app-network
     ports:
       - "5432:5432" # Пробрасываем порт, если нужно подключаться с хоста
     volumes:
