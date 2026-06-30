@@ -1,148 +1,166 @@
-```markdown
+# 🌡️ Climat Monitor — IoT-система мониторинга температуры и влажности (Docker + TimescaleDB)
 
----
-[eng Read in english](readme.md)
+Производственная IoT-система для удалённого мониторинга температуры и влажности.
+Микроконтроллер ESP32 с датчиком DHT22 публикует данные через MQTT, отдельный MQTT Listener принимает сообщения и сохраняет их в TimescaleDB (расширение PostgreSQL). Flask-приложение предоставляет REST API и обслуживает веб-интерфейс с визуализацией исторических данных с помощью Chart.js. Все компоненты развертываются в Docker с использованием Docker Compose V2.
 
-```markdown
+**Используемый стек:**
 
----
-# 🌡️ Climat Monitor — IoT система мониторинга климата (Docker + TimescaleDB)
-
-Производственная IoT-система для удалённого мониторинга температуры и влажности.  
-ESP32 с датчиком DHT22 публикует данные через MQTT; бэкенд на Flask сохраняет их в TimescaleDB (расширение PostgreSQL) и предоставляет REST API. Фронтенд визуализирует историю измерений с помощью Chart.js. Все компоненты контейнеризированы с помощью Docker Compose V2.
-
-Стек технологий:
-- Бэкенд: Python (Flask, paho-mqtt, psycopg2)
-- База данных: TimescaleDB (PostgreSQL 16)
-- MQTT-брокер: Mosquitto (на хосте)
-- Прокси: Nginx (терминация HTTPS, Let's Encrypt)
-- Фронтенд: нативный JavaScript, HTML5, Chart.js
-- Оркестрация: Docker Compose V2, BuildKit
+* **Backend:** Python (Flask, Gunicorn)
+* **MQTT Listener:** Python (paho-mqtt, psycopg2) — отдельный контейнер
+* **База данных:** TimescaleDB (PostgreSQL 16)
+* **MQTT-брокер:** Mosquitto (запущен на хост-машине)
+* **Прокси:** Nginx (внутри Docker + системный Nginx для HTTPS и Let's Encrypt)
+* **Frontend:** JavaScript (Vanilla JS), HTML5, Chart.js
+* **Оркестрация:** Docker Compose V2, BuildKit
 
 ---
 
-## 📁 Структура проекта
+# 📁 Структура проекта
 
-```
+```text
 homeclimatcontrol-2.0/
 ├── backend/
-│   ├── server.py               # Flask + MQTT listener
-│   ├── requirements.txt
-│   └── .env                    # переменные окружения (не в Git)
+│   ├── server.py               # Flask REST API
+│   └── requirements.txt
 ├── frontend/
 │   ├── index.html
 │   ├── style.css
-│   └── chart.js
+│   ├── app.js                  # Основная логика приложения
+│   └── chart.js                # Построение графиков
 ├── nginx/
-│   └── nginx.conf              # конфиг Nginx для HTTPS
+│   └── nginx.conf              # Конфигурация внутреннего Nginx
+├── init-db/
+│   └── 01-init.sql             # Инициализация базы данных
 ├── docker-compose.yml
-├── Dockerfile
+├── Dockerfile                  # Контейнер climat_web
+├── Dockerfile.listener         # Контейнер climat_mqtt_listener
+├── listener.py                 # MQTT Listener
 └── .dockerignore
 ```
 
-## 🚀 Возможности
+---
 
-- 📡 Приём MQTT – подписка на топик `esp32/sensors`, сохранение каждого измерения
-- 💾 TimescaleDB – автоматическое сжатие чанков старше 7 дней, гипертаблицы для быстрых временны́х запросов
-- 📊 REST API – сырые данные, последнее значение, статистика (среднее/мин/макс) и данные с группировкой по времени (час/день)
-- 📈 Веб-дашборд – интерактивный график Chart.js с выбором периода (1ч, 6ч, 24ч, 7д, 30д, всё)
-- 🐳 Полная контейнеризация – бэкенд и БД в Docker; тома для постоянного хранения
-- 🔒 Nginx reverse proxy – HTTPS + Let’s Encrypt (опционально)
-- ⚙️ Настройка через окружение – секреты в `.env`, не зашиты в коде
+# 🚀 Возможности
+
+* 📡 Приём данных по MQTT в отдельном контейнере
+* 💾 Хранение данных в TimescaleDB с использованием hypertable и автоматическим сжатием старых чанков
+* 📊 REST API для получения последних показаний, статистики и исторических данных
+* 📈 Интерактивный веб-интерфейс на Chart.js с выбором периода отображения
+* 🐳 Полная контейнеризация проекта с помощью Docker Compose
+* 🔒 Работа через HTTPS благодаря связке Nginx + Let's Encrypt
+* ⚙️ Гибкая настройка параметров через переменные окружения
 
 ---
 
-## 🔧 Архитектура (текущая версия)
+# 🔧 Архитектура
 
-```
+```text
 ESP32 + DHT22
      │
-     ▼ (MQTT, топик esp32/sensors)
-┌─────────────┐     ┌─────────────────────────────────┐
-│  Mosquitto  │────▶│       Flask App (контейнер)     │
-│ (на хосте)  │     │   - подписка на MQTT            │
-└─────────────┘     │   - запись в БД через psycopg2  │
-                    └──────────────┬──────────────────┘
-                                   │ (REST API)
-                                   ▼
-                          ┌─────────────────┐
-                          │ TimescaleDB     │
-                          │ (контейнер db)  │
-                          └────────┬────────┘
-                                   │
-                                   ▼
-                          ┌─────────────────┐
-                          │ Nginx (опционально)│
-                          │ HTTPS:443 → web │
-                          └─────────────────┘
-                                   │
-                                   ▼
-                          Веб-интерфейс (браузер)
+     ▼ (MQTT, esp32/sensors)
+┌─────────────┐
+│ Mosquitto   │ (хост)
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────────┐
+│ climat_mqtt_listener │
+│ принимает сообщения  │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────┐
+│ climat_db        │
+│ TimescaleDB      │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ climat_web       │
+│ Flask + Gunicorn │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ climat_nginx     │
+│ Внутренний Nginx │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ Системный Nginx  │
+│ HTTPS            │
+└────────┬─────────┘
+         │
+         ▼
+      Браузер
 ```
 
-Сеть: Все контейнеры используют выделенную bridge-сеть; БД не публикует порты на хост.  
-MQTT: Для доступа к брокеру на хосте Ubuntu используется `host.docker.internal` и `extra_hosts`.
+**Особенности архитектуры**
+
+* Все контейнеры работают в отдельной сети `app-network`.
+* База данных недоступна извне и используется только внутренними сервисами.
+* MQTT Listener подключается к Mosquitto, установленному на хост-машине.
+* Внутренний Nginx использует динамический upstream (`resolver 127.0.0.11`), благодаря чему корректно переживает перезапуск контейнеров.
 
 ---
 
-## 📡 API эндпоинты
+# 📡 REST API
 
-| Метод | Эндпоинт | Описание |
-|-------|----------|----------|
-| `GET` | `/api/data?period=1h&device=esp32_main` | Данные с группировкой по времени (сырые для коротких периодов, средние за день – для длинных) |
-| `GET` | `/api/latest` | Последнее измерение (температура, влажность, время) |
-| `GET` | `/api/stats` | Общая статистика: количество записей, среднее/мин/макс по обоим датчикам |
-| `GET` | `/api/health` | Проверка здоровья (подключение к БД) |
+| Метод | Endpoint                                | Назначение                   |
+| ----- | --------------------------------------- | ---------------------------- |
+| `GET` | `/api/latest`                           | Последние показания датчиков |
+| `GET` | `/api/stats`                            | Общая статистика             |
+| `GET` | `/api/data?period=1h&device=esp32_main` | Исторические данные          |
+| `GET` | `/api/health`                           | Проверка состояния сервиса   |
 
-**Параметры запроса для `/api/data`:**
-- `period` – `1h`, `6h`, `24h`, `7d`, `30d`, `all`
-- `device` – идентификатор устройства (по умолчанию `esp32_main`)
+### Параметры `/api/data`
 
-## 📊 Веб-интерфейс
-
-- **Текущие значения** – последние показания температуры и влажности
-- **Интерактивный график** – выбор периода, масштабирование, наведение для точных значений
-- **Адаптивный дизайн** – работает на десктопах и мобильных устройствах
-- **Автообновление** – опционально, каждые 30 секунд
+* `period` — `1h`, `6h`, `24h`, `7d`, `30d`, `all`
+* `device` — идентификатор устройства (`esp32_main` по умолчанию)
 
 ---
 
-## 🐳 Запуск через Docker Compose (production)
+# 📊 Веб-интерфейс
 
-### Требования
-- Ubuntu 24.04+ (или любой Linux с Docker Engine 24+)
-- Плагин Docker Compose (команда `docker compose`, не устаревшая `docker-compose`)
-- MQTT-брокер Mosquitto, установленный **на хосте** (не в контейнере)
-- Git, curl, доменное имя с DNS-записью на ваш сервер (для HTTPS)
+* **Главная** — текущая температура и влажность
+* **История** — графики изменения показаний
+* **Статистика** — средние, минимальные и максимальные значения
+* **Настройки** — пороги срабатывания и уведомления
+* **Адаптивный дизайн** — поддержка мобильных устройств
+* **Автообновление** — новые данные каждые 3 секунды
 
-### 1. Клонировать репозиторий и подготовить окружение
+---
+
+# 🐳 Запуск проекта
+
+## Требования
+
+* Ubuntu 24.04+ или любой Linux с Docker Engine 24+
+* Docker Compose V2
+* MQTT-брокер Mosquitto на хост-машине
+* Git
+* Домен (при использовании HTTPS)
+
+## 1. Клонирование репозитория
 
 ```bash
 git clone https://github.com/ciclos5258/homeclimatcontrol-2.0.git
 cd homeclimatcontrol-2.0
-cp backend/.env.example backend/.env   # создать из шаблона
 ```
 
-### 2. Настроить `.env` (пример)
+## 2. Настройка переменных окружения
 
 ```env
-# База данных (используется внутри Docker-сети)
 DATABASE_URL=postgresql://climat:secret@db:5432/climat_monitor
-
-# MQTT-брокер (на хосте)
-MQTT_BROKER=host.docker.internal
+MQTT_BROKER=172.17.0.1
 MQTT_PORT=1883
 MQTT_TOPIC=esp32/sensors
-MQTT_USER=python
-MQTT_PASSWORD=ваш_пароль_mqtt
-
-# Необязательно: порт для веб-сервера
-WEB_PORT=5002
+MQTT_USER=climat
+MQTT_PASSWORD=password
 ```
 
-### 3. Настроить MQTT-брокер на хосте для приёма подключений из Docker
-
-Отредактируйте `/etc/mosquitto/mosquitto.conf`:
+## 3. Настройка Mosquitto
 
 ```conf
 listener 1883 0.0.0.0
@@ -150,110 +168,122 @@ allow_anonymous false
 password_file /etc/mosquitto/passwd
 ```
 
-Создайте пользователя `python`:
+Создание пользователя:
 
 ```bash
-sudo mosquitto_passwd -c /etc/mosquitto/passwd python
+sudo mosquitto_passwd -c /etc/mosquitto/passwd climat
 sudo systemctl restart mosquitto
 ```
 
-### 4. Собрать и запустить через Docker Compose
+## 4. Сборка и запуск
 
 ```bash
 docker compose up -d --build
 ```
 
-Посмотреть логи:
+Просмотр логов:
 
 ```bash
-docker compose logs -f web
+docker compose logs -f
 ```
 
-### 5. Настройка Nginx reverse proxy (опционально, но рекомендуется)
+## 5. Настройка Nginx
 
-Пример `nginx.conf` (разместите в `./nginx/`):
+Используйте системный Nginx для обработки HTTPS и проксирования запросов на внутренний контейнер `climat_nginx`.
 
-```nginx
-server {
-    listen 80;
-    server_name homeclimatcontrol.ru;
-    return 301 https://$server_name$request_uri;
-}
+После изменения конфигурации:
 
-server {
-    listen 443 ssl http2;
-    server_name homeclimatcontrol.ru;
-
-    ssl_certificate     /etc/letsencrypt/live/homeclimatcontrol.ru/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/homeclimatcontrol.ru/privkey.pem;
-
-    location / {
-        proxy_pass http://web:5002;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
 ```
 
-Запустите контейнер Nginx (если он включён в `docker-compose.yml`).
-
-### 6. Настроить файрвол (UFW)
+## 6. Настройка UFW
 
 ```bash
 sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw allow 1883/tcp   # если ESP32 подключается напрямую снаружи
+sudo ufw allow 1883/tcp
 sudo ufw enable
 ```
 
 ---
 
-## 🔐 Безопасность
+# 🔐 Безопасность
 
-- **MQTT аутентификация** – имя пользователя/пароль (не анонимный доступ)
-- **База данных** – не публикуется на хост, доступна только внутри Docker-сети
-- **Секреты** – хранятся в `.env`, не попадают в Git
-- **CORS** – ограничен для вашего домена (по умолчанию в коде `CORS(app)` открытый – настройте для продакшена)
-- **Nginx** – терминация HTTPS, скрывает порт Flask от интернета
+* Авторизация MQTT по логину и паролю
+* База данных изолирована внутри Docker-сети
+* Конфиденциальные данные рекомендуется хранить в `.env`
+* Ограничение CORS
+* HTTPS обеспечивается с помощью Let's Encrypt
 
 ---
 
-## 🧪 Разработка (без Docker)
-
-Установите зависимости Python, создайте виртуальное окружение и запустите:
+# 🧪 Локальная разработка
 
 ```bash
 cd backend
+
 python -m venv venv
 source venv/bin/activate
+
 pip install -r requirements.txt
+
+export DATABASE_URL=postgresql://climat:secret@localhost:5432/climat_monitor
+export MQTT_BROKER=localhost
+export MQTT_PORT=1883
+export MQTT_TOPIC=esp32/sensors
+export MQTT_USER=climat
+export MQTT_PASSWORD=password
+
 python server.py
 ```
 
-Бэкенд попытается подключиться к локальному PostgreSQL (укажите `DATABASE_URL` соответственно) и MQTT-брокеру на `localhost:1883`.
+---
+
+# 🔧 Решение распространённых проблем
+
+| Проблема                  | Возможная причина                   | Решение                      |
+| ------------------------- | ----------------------------------- | ---------------------------- |
+| 502 Bad Gateway           | Flask недоступен                    | Проверить конфигурацию Nginx |
+| 500 Internal Server Error | Нет подключения к БД                | Проверить Docker-сеть        |
+| Нет данных                | MQTT Listener не получает сообщения | Проверить логи Listener      |
+| Заняты порты 80/443       | Другой веб-сервер использует порты  | Использовать системный Nginx |
+| Таблицы отсутствуют       | SQL-инициализация не выполнилась    | Пересоздать том БД           |
+
+Полезные команды:
+
+```bash
+docker compose exec web curl http://localhost:8000/api/latest
+
+docker compose exec db psql -U climat -d climat_monitor
+
+docker logs climat_mqtt_listener -f
+```
 
 ---
 
-## 📝 Планы / дорожная карта
+# 📝 Планы развития
 
-- [ ] Добавить MQTT over WebSocket для обновлений в реальном времени
-- [ ] Реализовать аутентификацию пользователей (Flask‑Login)
-- [ ] Поддержка нескольких устройств (уже заложено в схеме БД)
-- [ ] Оповещения (telegram/email при превышении порогов)
-
----
-
-## 👨‍💻 Автор
-
-- GitHub: [github.com/ciclos5258](https://github.com/ciclos5258)
-- Email: [ciclos52582@gmail.com](mailto:ciclos52582@gmail.com)
-- Telegram: [@rendich76](https://t.me/rendich76)
+* [ ] Поддержка MQTT over WebSocket
+* [ ] Аутентификация пользователей
+* [ ] Поддержка нескольких устройств
+* [ ] Уведомления через Telegram и Email
+* [ ] Экспорт данных в CSV и Excel
 
 ---
 
-## 📜 Лицензия
+# 👨‍💻 Автор
+
+**GitHub:** https://github.com/ciclos5258
+
+**Email:** [ciclos52582@gmail.com](mailto:ciclos52582@gmail.com)
+
+**Telegram:** https://t.me/rendich76
+
+---
+
+# 📄 Лицензия
 
 MIT
-```
-```

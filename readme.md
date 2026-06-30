@@ -1,15 +1,14 @@
-```markdown
-
 # 🌡️ Climat Monitor — IoT Climate Monitoring System (Docker + TimescaleDB)
 
 A production-grade IoT system for remote temperature and humidity monitoring.  
-The ESP32 microcontroller (DHT22) publishes data via MQTT; the Flask backend stores it in TimescaleDB (PostgreSQL extension) and exposes a REST API. The web frontend visualises historical data using Chart.js. All components are containerised with Docker Compose V2.
+The ESP32 microcontroller (DHT22) publishes data via MQTT; a separate MQTT listener stores readings in TimescaleDB (PostgreSQL extension). The Flask backend exposes a REST API and serves the web frontend that visualises historical data using Chart.js. All components are containerised with Docker Compose V2.
 
 **Stack:**
-- **Backend:** Python (Flask, paho-mqtt, psycopg2)
+- **Backend:** Python (Flask, Gunicorn)
+- **MQTT Listener:** Python (paho-mqtt, psycopg2) — runs as a dedicated container
 - **Database:** TimescaleDB (PostgreSQL 16)
 - **MQTT Broker:** Mosquitto (running on host machine)
-- **Proxy:** Nginx (HTTPS termination, Let's Encrypt)
+- **Proxy:** Nginx (Docker internal + host system for HTTPS termination, Let's Encrypt)
 - **Frontend:** JavaScript (native), HTML5, Chart.js
 - **Orchestration:** Docker Compose V2, BuildKit
 
@@ -17,65 +16,91 @@ The ESP32 microcontroller (DHT22) publishes data via MQTT; the Flask backend sto
 
 ## 📁 Project Structure
 
-```
+```text
 homeclimatcontrol-2.0/
 ├── backend/
-│   ├── server.py               # Flask + MQTT listener
-│   ├── requirements.txt
-│   └── .env                    # environment variables (not committed)
+│   ├── server.py               # Flask REST API
+│   └── requirements.txt
 ├── frontend/
 │   ├── index.html
 │   ├── style.css
-│   └── chart.js
+│   ├── app.js                  # main logic + tab switching + live data
+│   └── chart.js                # chart initialisation (history tab)
 ├── nginx/
-│   └── nginx.conf              # HTTPS proxy config
+│   └── nginx.conf              # internal Docker Nginx config (reverse proxy to web)
+├── init-db/
+│   └── 01-init.sql             # SQL script to create tables (auto-executed on first start)
 ├── docker-compose.yml
-├── Dockerfile
+├── Dockerfile                  # for climat_web (Flask + Gunicorn)
+├── Dockerfile.listener         # for climat_mqtt_listener
+├── listener.py                 # MQTT listener script
 └── .dockerignore
 ```
 
+---
+
 ## 🚀 Features
 
-- 📡 **MQTT ingestion** – listens to `esp32/sensors` topic, stores every reading
-- 💾 **TimescaleDB** – automatic compression of chunks older than 7 days, hypertables for fast time‑series queries
-- 📊 **REST API** – raw data, latest value, aggregated statistics (avg/min/max) and time‑bucketed data (hour/day)
+- 📡 **MQTT ingestion** – dedicated container subscribes to `esp32/sensors` topic and stores every reading
+- 💾 **TimescaleDB** – automatic compression of chunks older than 7 days, hypertables for fast time-series queries
+- 📊 **REST API** – raw data, latest value, aggregated statistics (avg/min/max) and time-bucketed data (hour/day)
 - 📈 **Web dashboard** – interactive Chart.js graph with selectable time periods (1h, 6h, 24h, 7d, 30d, all)
-- 🐳 **Full containerisation** – backend and database run in Docker; volumes for persistent storage
-- 🔒 **Nginx reverse proxy** – HTTPS + Let’s Encrypt (optional but recommended)
-- ⚙️ **Environment‑based configuration** – no hard‑coded secrets, uses `.env` and `docker-compose.yml`
+- 🐳 **Full containerisation** – backend, listener, database and internal proxy run in Docker; volumes for persistent storage
+- 🔒 **Nginx reverse proxy** – host Nginx terminates HTTPS (Let's Encrypt) and forwards to internal Docker Nginx
+- ⚙️ **Environment-based configuration** – all settings via `docker-compose.yml` (can be extended with `.env`)
 
 ---
 
 ## 🔧 Architecture (current version)
 
-```
+```text
 ESP32 + DHT22
      │
      ▼ (MQTT, topic esp32/sensors)
-┌─────────────┐     ┌─────────────────────────────────┐
-│  Mosquitto  │────▶│       Flask App (container)      │
-│ (on host)   │     │   - subscribes to MQTT           │
-└─────────────┘     │   - stores via psycopg2          │
-                    └──────────────┬──────────────────┘
-                                   │ (REST API)
-                                   ▼
-                          ┌─────────────────┐
-                          │ TimescaleDB     │
-                          │ (db container)  │
-                          └────────┬────────┘
-                                   │
-                                   ▼
-                          ┌─────────────────┐
-                          │ Nginx (optional)│
-                          │ HTTPS:443 → web │
-                          └─────────────────┘
-                                   │
-                                   ▼
-                          Web Interface (browser)
+┌─────────────┐
+│  Mosquitto  │ (host machine)
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────────┐
+│ climat_mqtt_listener │ (Docker container)
+│ subscribes & writes  │
+└──────────┬───────────┘
+           │ (psycopg2)
+           ▼
+┌──────────────────┐
+│  climat_db       │ (TimescaleDB container)
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ climat_web       │ (Flask + Gunicorn container)
+│ REST API + static│
+└────────┬─────────┘
+         │ http://climat_web:8000
+         ▼
+┌──────────────────┐
+│ climat_nginx     │ (internal Docker Nginx)
+│ reverse proxy    │ 127.0.0.1:8080:80
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│ Host Nginx       │ (system Nginx)
+│ HTTPS :443 →     │
+│ 127.0.0.1:8080   │
+└────────┬─────────┘
+         │
+         ▼
+   Web browser (user)
 ```
 
-**Network:** All containers share a dedicated bridge network; the database is not exposed to the host (no `ports` for `db`).  
-**MQTT access:** Uses `host.docker.internal` + `extra_hosts` to reach the broker on the Ubuntu host.
+**Key points:**
+
+- All containers are on a dedicated bridge network `app-network`.
+- `climat_db` is not exposed to the host; only `climat_web` and `climat_mqtt_listener` connect internally.
+- Host Mosquitto must be reachable from the listener container (using host's Docker gateway IP or `extra_hosts`).
+- Internal `climat_nginx` uses a dynamic upstream with `resolver 127.0.0.11` to avoid startup failures when `web` isn't ready.
 
 ---
 
@@ -83,60 +108,61 @@ ESP32 + DHT22
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/data?period=1h&device=esp32_main` | Time‑bucketed data (raw for short periods, daily averages for long periods) |
 | `GET` | `/api/latest` | Most recent reading (temperature, humidity, timestamp) |
 | `GET` | `/api/stats` | Overall statistics: total readings, average/min/max for both sensors |
+| `GET` | `/api/data?period=1h&device=esp32_main` | Time-bucketed data (raw for short periods, daily averages for long periods) |
 | `GET` | `/api/health` | Health check (database connectivity) |
 
-**Query parameters for `/api/data`:**
+### Query parameters for `/api/data`
+
 - `period` – `1h`, `6h`, `24h`, `7d`, `30d`, `all`
 - `device` – device ID (default: `esp32_main`)
 
+---
+
 ## 📊 Web Interface
 
-- **Current values** – latest temperature and humidity
-- **Interactive chart** – select period, zoom/pan, hover for exact values
+- **Overview tab** – current temperature/humidity with trend indicators, live status
+- **History tab** – Chart.js graph with selectable period, zoom and hover
+- **Statistics tab** – aggregated stats for today/week/month
+- **Settings tab** – threshold configuration, Telegram notifications
 - **Responsive design** – works on desktop and mobile
-- **Auto‑refresh** – optionally fetches new data every 30 seconds
+- **Auto-refresh** – data updates every 3 seconds via `/api/latest`
 
 ---
 
 ## 🐳 Running with Docker Compose (production)
 
 ### Prerequisites
+
 - Ubuntu 24.04+ (or any Linux with Docker Engine 24+)
 - Docker Compose Plugin (`docker compose` command, not legacy `docker-compose`)
 - Mosquitto MQTT broker **installed on the host** (not in a container)
 - Git, curl, and a domain name with DNS pointing to your server (for HTTPS)
 
-### 1. Clone the repository and prepare the environment
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/ciclos5258/homeclimatcontrol-2.0.git
 cd homeclimatcontrol-2.0
-cp backend/.env.example backend/.env   # create from template
 ```
 
-### 2. Configure `.env` (example)
+### 2. Configure environment variables
+
+Settings are defined directly in `docker-compose.yml` (services → environment).
+
+You can override them using an `.env` file:
 
 ```env
-# Database (used inside Docker network)
 DATABASE_URL=postgresql://climat:secret@db:5432/climat_monitor
-
-# MQTT broker (on host)
-MQTT_BROKER=host.docker.internal
+MQTT_BROKER=172.17.0.1
 MQTT_PORT=1883
 MQTT_TOPIC=esp32/sensors
-MQTT_USER=python
-MQTT_PASSWORD=your_mqtt_password
-
-# Optional: web port mapping
-WEB_PORT=5002
+MQTT_USER=climat
+MQTT_PASSWORD=password
 ```
 
-### 3. Ensure MQTT broker on host accepts connections from Docker
-
-Edit `/etc/mosquitto/mosquitto.conf`:
+### 3. Ensure MQTT broker accepts Docker connections
 
 ```conf
 listener 1883 0.0.0.0
@@ -144,60 +170,63 @@ allow_anonymous false
 password_file /etc/mosquitto/passwd
 ```
 
-Create user `python`:
-
 ```bash
-sudo mosquitto_passwd -c /etc/mosquitto/passwd python
+sudo mosquitto_passwd -c /etc/mosquitto/passwd climat
 sudo systemctl restart mosquitto
 ```
 
-### 4. Build and run with Docker Compose
+### 4. Build and run
 
 ```bash
 docker compose up -d --build
 ```
 
-Check logs:
-
 ```bash
-docker compose logs -f web
+docker compose logs -f
 ```
 
-### 5. Set up Nginx reverse proxy (optional but recommended)
-
-Example `nginx.conf` (placed in `./nginx/`):
+### 5. Configure host Nginx
 
 ```nginx
 server {
-    listen 80;
-    server_name homeclimatcontrol.ru;
-    return 301 https://$server_name$request_uri;
+    listen 443 ssl;
+    server_name homeclimatcontrol.ru www.homeclimatcontrol.ru;
+
+    ssl_certificate /etc/letsencrypt/live/homeclimatcontrol.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/homeclimatcontrol.ru/privkey.pem;
+
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 
 server {
-    listen 443 ssl http2;
-    server_name homeclimatcontrol.ru;
-
-    ssl_certificate     /etc/letsencrypt/live/homeclimatcontrol.ru/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/homeclimatcontrol.ru/privkey.pem;
-
-    location / {
-        proxy_pass http://web:5002;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
+    listen 80;
+    server_name homeclimatcontrol.ru www.homeclimatcontrol.ru;
+    return 301 https://$host$request_uri;
 }
 ```
 
-Run Nginx container (already included in `docker-compose.yml` if you uncomment it).
+```bash
+sudo ln -s /etc/nginx/sites-available/homeclimatcontrol.ru /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
 
-### 6. Update firewall (UFW)
+### 6. Update firewall
 
 ```bash
 sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw allow 1883/tcp   # if external ESP32 connects directly
+sudo ufw allow 1883/tcp
 sudo ufw enable
 ```
 
@@ -205,48 +234,73 @@ sudo ufw enable
 
 ## 🔐 Security
 
-- **MQTT authentication** – username/password (not anonymous)
-- **Database** – not exposed to host, only reachable via internal Docker network
-- **Secrets** – stored in `.env`, never committed to Git
-- **CORS** – restricted to your domain (configured in Flask, though `CORS(app)` is open by default – adjust for production)
-- **Nginx** – handles HTTPS termination, hides Flask port from the internet
+- MQTT authentication
+- Database isolated inside Docker network
+- Secrets stored in `.env` or Compose configuration
+- Restricted CORS
+- HTTPS terminated by host Nginx
 
 ---
 
-## 🧪 Development (without Docker)
-
-Install Python dependencies, create a virtual environment, and run:
+## 🧪 Local Development
 
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+
+export DATABASE_URL=postgresql://climat:secret@localhost:5432/climat_monitor
+export MQTT_BROKER=localhost
+export MQTT_PORT=1883
+export MQTT_TOPIC=esp32/sensors
+export MQTT_USER=climat
+export MQTT_PASSWORD=password
+
 python server.py
 ```
 
-The backend will try to connect to a local PostgreSQL instance (set `DATABASE_URL` accordingly) and an MQTT broker at `localhost:1883`.
+---
+
+## 🔧 Troubleshooting
+
+| Symptom | Possible Cause | Fix |
+|---------|---------------|-----|
+| 502 Bad Gateway | Internal nginx cannot reach `climat_web` | Check upstream configuration |
+| 500 Internal Server Error | Database hostname not resolved | Verify Docker network |
+| No data | MQTT listener cannot connect | Check listener logs |
+| Ports busy | Another web server is running | Use host Nginx only |
+| Tables missing | Init scripts didn't run | Recreate database volume |
+
+Useful commands:
+
+```bash
+docker compose exec web curl -s http://localhost:8000/api/latest
+
+docker compose exec db psql -U climat -d climat_monitor -c "SELECT count(*) FROM sensor_data;"
+
+docker logs climat_mqtt_listener -f
+```
 
 ---
 
-## 📝 To-Do / Roadmap
+## 📝 Roadmap
 
-- [ ] Add MQTT over WebSocket for real‑time frontend updates
-- [ ] Implement user authentication (Flask‑Login)
-- [ ] Store multiple devices (already supported in DB schema)
-- [ ] Add alerting (telegram/email when thresholds are exceeded)
+- [ ] MQTT over WebSocket
+- [ ] User authentication
+- [ ] Multiple device support
+- [ ] Telegram/email alerts
 
 ---
 
 ## 👨‍💻 Author
 
-- GitHub: [github.com/ciclos5258](https://github.com/ciclos5258)
-- Email: [ciclos52582@gmail.com](mailto:ciclos52582@gmail.com)
-- Telegram: [@rendich76](https://t.me/rendich76)
+- GitHub: https://github.com/ciclos5258
+- Email: ciclos52582@gmail.com
+- Telegram: https://t.me/rendich76
 
 ---
 
-## Licence
+## License
 
 MIT
-```
