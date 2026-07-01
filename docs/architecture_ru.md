@@ -301,5 +301,4 @@ sudo systemctl reload nginx
 
 ---
 
-*Документ поддерживается командой Climat Monitor. Последнее обновление: июнь 2026.*
 ```

@@ -1,8 +1,6 @@
 import json
 import os
-import threading
 from datetime import datetime, timedelta
-import paho.mqtt.client as mqtt
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import psycopg2
@@ -17,12 +15,8 @@ DATABASE_URL = os.environ.get(
     'postgresql://climat:secret@localhost:5432/climat_monitor'
 )
 
-# ---------- Конфигурация MQTT ----------
-MQTT_BROKER = os.environ.get('MQTT_BROKER', 'localhost')
-MQTT_PORT = int(os.environ.get('MQTT_PORT', '1883'))
-MQTT_TOPIC = os.environ.get('MQTT_TOPIC', 'esp32/sensors')
-
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend'))
+
 
 def get_db_connection():
     """Создаёт и возвращает новое подключение к PostgreSQL."""
@@ -30,18 +24,17 @@ def get_db_connection():
     conn.autocommit = False
     return conn
 
+
 def init_db():
     """Инициализирует базу данных: создаёт расширение TimescaleDB и таблицу."""
     conn = get_db_connection()
     try:
         cur = conn.cursor()
 
-        # Включаем расширение TimescaleDB (если ещё не включено)
         cur.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
 
-        # Создаём таблицу с составным первичным ключом (время + устройство)
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS sensor_readings (
+            CREATE TABLE IF NOT EXISTS sensor_data (
                 time        TIMESTAMPTZ NOT NULL,
                 device_id   TEXT NOT NULL,
                 temperature DOUBLE PRECISION,
@@ -50,29 +43,25 @@ def init_db():
             );
         """)
 
-        # Превращаем обычную таблицу в гипертаблицу TimescaleDB
         cur.execute("""
-            SELECT create_hypertable('sensor_readings', 'time',
+            SELECT create_hypertable('sensor_data', 'time',
                    if_not_exists => TRUE, migrate_data => TRUE);
         """)
 
-        # Создаём индекс для быстрого получения последних данных
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_device_time
-            ON sensor_readings (device_id, time DESC);
+            ON sensor_data (device_id, time DESC);
         """)
 
-        # Включаем сжатие старых данных
         cur.execute("""
-            ALTER TABLE sensor_readings SET (
+            ALTER TABLE sensor_data SET (
                 timescaledb.compress,
                 timescaledb.compress_segmentby = 'device_id'
             );
         """)
 
-        # Автоматически сжимать чанки старше 7 дней (политика)
         cur.execute("""
-            SELECT add_compression_policy('sensor_readings', INTERVAL '7 days',
+            SELECT add_compression_policy('sensor_data', INTERVAL '7 days',
                    if_not_exists => TRUE);
         """)
 
@@ -85,51 +74,14 @@ def init_db():
         cur.close()
         conn.close()
 
-def save_reading(timestamp, temperature, humidity, device_id="esp32_main"):
-    """Сохраняет одно измерение в БД."""
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO sensor_readings (time, device_id, temperature, humidity)
-            VALUES (%s, %s, %s, %s)
-        """, (timestamp, device_id, temperature, humidity))
-        conn.commit()
-    except Exception as e:
-        print("❌ Ошибка сохранения:", e)
-        conn.rollback()
-    finally:
-        cur.close()
-        conn.close()
-
-# ---------- MQTT обработчики ----------
-def on_connect(client, userdata, flags, reason_code, properties):
-    print(f"📡 MQTT подключён, код: {reason_code}")
-    client.subscribe(MQTT_TOPIC)
-
-def on_message(client, userdata, message):
-    try:
-        payload = json.loads(message.payload.decode("utf-8"))
-        temp = float(payload["temperature"])
-        hum = float(payload["humidity"])
-        # Используем текущее UTC время
-        timestamp = datetime.utcnow()
-        save_reading(timestamp, temp, hum)
-        print(f"💾 Сохранено: {timestamp}, {temp}°C, {hum}%")
-    except Exception as e:
-        print("❌ Ошибка обработки MQTT:", e)
-
-mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-mqtt_client.username_pw_set("python", "pythonpassword")
-mqtt_client.on_connect = on_connect
-mqtt_client.on_message = on_message
 
 # ---------- REST API ----------
+
 @app.route('/api/data', methods=['GET'])
 def get_all_data():
     period = request.args.get('period', '1h')
     device = request.args.get('device', 'esp32_main')
-    
+
     now = datetime.utcnow()
     if period == '1h':
         start_time = now - timedelta(hours=1)
@@ -147,8 +99,7 @@ def get_all_data():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        
-        # Для длинных периодов используем агрегацию по дням
+
         if period in ('7d', '30d', 'all'):
             if start_time:
                 cur.execute("""
@@ -156,7 +107,7 @@ def get_all_data():
                         time_bucket('1 day', time) AS day,
                         AVG(temperature) AS temperature,
                         AVG(humidity) AS humidity
-                    FROM sensor_readings
+                    FROM sensor_data
                     WHERE device_id = %s AND time >= %s
                     GROUP BY day
                     ORDER BY day ASC
@@ -167,13 +118,12 @@ def get_all_data():
                         time_bucket('1 day', time) AS day,
                         AVG(temperature) AS temperature,
                         AVG(humidity) AS humidity
-                    FROM sensor_readings
+                    FROM sensor_data
                     WHERE device_id = %s
                     GROUP BY day
                     ORDER BY day ASC
                 """, (device,))
             rows = cur.fetchall()
-            # Приводим к единому формату: timestamp, temperature, humidity
             data = [
                 {
                     "timestamp": row["day"].isoformat(),
@@ -183,18 +133,17 @@ def get_all_data():
                 for row in rows
             ]
         else:
-            # Сырые данные для коротких периодов
             if start_time:
                 cur.execute("""
                     SELECT time, temperature, humidity
-                    FROM sensor_readings
+                    FROM sensor_data
                     WHERE device_id = %s AND time >= %s
                     ORDER BY time ASC
                 """, (device, start_time))
             else:
                 cur.execute("""
                     SELECT time, temperature, humidity
-                    FROM sensor_readings
+                    FROM sensor_data
                     WHERE device_id = %s
                     ORDER BY time ASC
                 """, (device,))
@@ -219,6 +168,7 @@ def get_all_data():
         cur.close()
         conn.close()
 
+
 @app.route('/api/latest', methods=['GET'])
 def get_latest():
     conn = get_db_connection()
@@ -226,7 +176,7 @@ def get_latest():
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
             SELECT time, temperature, humidity
-            FROM sensor_readings
+            FROM sensor_data
             WHERE device_id = 'esp32_main'
             ORDER BY time DESC
             LIMIT 1
@@ -248,12 +198,13 @@ def get_latest():
         cur.close()
         conn.close()
 
+
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # Общая статистика по всем данным (без временных рамок)
+        # ИСПРАВЛЕНО: было sensor_readings → стало sensor_data
         cur.execute("""
             SELECT
                 COUNT(*) AS total_readings,
@@ -263,7 +214,7 @@ def get_stats():
                 MAX(temperature) AS max_temp,
                 MIN(humidity) AS min_hum,
                 MAX(humidity) AS max_hum
-            FROM sensor_readings
+            FROM sensor_data
             WHERE device_id = 'esp32_main'
         """)
         row = cur.fetchone()
@@ -287,17 +238,13 @@ def get_stats():
         cur.close()
         conn.close()
 
-def start_mqtt():
-    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    mqtt_client.loop_forever()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Проверяет готовность БД и наличие таблицы."""
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sensor_readings');")
+        cur.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'sensor_data');")
         exists = cur.fetchone()[0]
         cur.close()
         conn.close()
@@ -308,20 +255,20 @@ def health_check():
     except Exception as e:
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
+
 @app.route('/')
 def serve_frontend_index():
     return send_from_directory(FRONTEND_DIR, 'index.html')
 
+
 @app.route('/<path:filename>')
 def serve_frontend_assets(filename):
-    """Все остальные файлы (CSS, JS, изображения)"""
-    # Не мешаем API-вызовам
     if filename.startswith('api/'):
         return '', 404
     return send_from_directory(FRONTEND_DIR, filename)
 
+
 if __name__ == '__main__':
     init_db()
-    threading.Thread(target=start_mqtt, daemon=True).start()
-    print("🚀 Flask API server running on port 5002")
-    app.run(host='0.0.0.0', port=5002, debug=False)
+    print("🚀 Flask API server running on port 8000")
+    app.run(host='0.0.0.0', port=8000, debug=False)
