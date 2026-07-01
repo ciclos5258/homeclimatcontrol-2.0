@@ -22,7 +22,7 @@ MQTT_USER = os.getenv('MQTT_USER', '')
 MQTT_PASSWORD = os.getenv('MQTT_PASSWORD', '')
 
 
-def insert_sensor_data(sensor_id, temperature, humidity):
+def insert_sensor_data(device_id, temperature, humidity):
     """Вставка данных в PostgreSQL."""
     conn = None
     cur = None
@@ -31,11 +31,11 @@ def insert_sensor_data(sensor_id, temperature, humidity):
         cur = conn.cursor()
         now = datetime.now(timezone.utc)
         cur.execute(
-            "INSERT INTO sensor_data (time, sensor_id, temperature, humidity) VALUES (%s, %s, %s, %s)",
-            (now, sensor_id, temperature, humidity)
+            "INSERT INTO sensor_data (time, device_id, temperature, humidity) VALUES (%s, %s, %s, %s)",
+            (now, device_id, temperature, humidity)
         )
         conn.commit()
-        logging.info(f"Data inserted: {sensor_id}, Temp: {temperature}, Hum: {humidity}")
+        logging.info(f"Data inserted: {device_id}, Temp: {temperature}, Hum: {humidity}")
     except Exception as e:
         logging.error(f"DB error: {e}")
     finally:
@@ -49,19 +49,19 @@ def on_message(client, userdata, msg):
     logging.info(f"Message received on topic {msg.topic}: {msg.payload.decode()}")
     try:
         payload = json.loads(msg.payload.decode())
-        # Ожидаемый формат JSON: {"sensor_id": "esp32_1", "temperature": 25.5, "humidity": 60.0}
-        sensor_id = payload.get('sensor_id')
+        # ESP32 присылает поле "device" — используем его как device_id
+        device_id = payload.get('device')
         temperature = payload.get('temperature')
         humidity = payload.get('humidity')
 
-        if sensor_id is None:
-            logging.warning("Missing 'sensor_id' in payload")
+        if device_id is None:
+            logging.warning("Missing 'device' in payload")
             return
         if temperature is None or humidity is None:
             logging.warning("Missing 'temperature' or 'humidity' in payload")
             return
 
-        insert_sensor_data(sensor_id, temperature, humidity)
+        insert_sensor_data(device_id, temperature, humidity)
     except json.JSONDecodeError:
         logging.error("Failed to decode JSON payload")
     except Exception as e:
