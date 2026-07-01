@@ -79,8 +79,9 @@ def init_db():
 
 @app.route('/api/data', methods=['GET'])
 def get_all_data():
+    # ИЗМЕНЕНО: дефолтное устройство теперь esp32_1
     period = request.args.get('period', '1h')
-    device = request.args.get('device', 'esp32_main')
+    device = request.args.get('device', 'esp32_1')
 
     now = datetime.utcnow()
     if period == '1h':
@@ -171,13 +172,13 @@ def get_all_data():
 
 @app.route('/api/latest', methods=['GET'])
 def get_latest():
+    # ИЗМЕНЕНО: убрана фильтрация по device_id, теперь возвращается последняя запись без привязки
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute("""
-            SELECT time, temperature, humidity
+            SELECT time, device_id, temperature, humidity
             FROM sensor_data
-            WHERE device_id = 'esp32_main'
             ORDER BY time DESC
             LIMIT 1
         """)
@@ -187,6 +188,7 @@ def get_latest():
                 "success": True,
                 "data": {
                     "timestamp": row["time"].isoformat(),
+                    "device_id": row["device_id"],
                     "temperature": row["temperature"],
                     "humidity": row["humidity"]
                 }
@@ -201,10 +203,10 @@ def get_latest():
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
+    # ИЗМЕНЕНО: убрано условие WHERE device_id, теперь статистика по всем устройствам
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        # ИСПРАВЛЕНО: было sensor_readings → стало sensor_data
         cur.execute("""
             SELECT
                 COUNT(*) AS total_readings,
@@ -215,7 +217,6 @@ def get_stats():
                 MIN(humidity) AS min_hum,
                 MAX(humidity) AS max_hum
             FROM sensor_data
-            WHERE device_id = 'esp32_main'
         """)
         row = cur.fetchone()
         if row and row["total_readings"] > 0:
