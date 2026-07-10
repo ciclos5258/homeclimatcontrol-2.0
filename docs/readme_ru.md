@@ -291,4 +291,3 @@ docker compose logs mqtt_listener -f
 # 📄 Лицензия
 
 MIT
-```

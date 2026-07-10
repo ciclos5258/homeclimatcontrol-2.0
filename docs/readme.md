@@ -1,5 +1,5 @@
 [Документация на русском](readme_ru.md)
-```markdown
+
 # 🌡️ Climat Monitor — IoT Climate Monitoring System (Docker + TimescaleDB)
 
 A production-grade IoT system for remote temperature and humidity monitoring.  
@@ -310,4 +310,3 @@ docker compose logs mqtt_listener -f
 ## License
 
 MIT
-```
