@@ -65,7 +65,7 @@ Host:
    ```json
    {"device": "esp32_1", "temperature": 24.9, "humidity": 52.5}
    ```
-2. **Processing**: `climat_mqtt_listener` receives the message, validates/extracts fields (uses `device` as `sensor_id`), and inserts a row into `sensor_data` table via `psycopg2`.
+2. **Processing**: `climat_mqtt_listener` receives the message, extracts the `device` field and uses it as `device_id`. It then inserts a row into `sensor_data` table via `psycopg2`.
 3. **Storage**: TimescaleDB automatically partitions the hypertable, compresses chunks older than 7 days.
 4. **API**: `climat_web` queries `sensor_data` and returns JSON.
 5. **Frontend**: Browser loads static files from `climat_web`, then calls `/api/latest`, `/api/stats`, `/api/data` periodically.
@@ -90,7 +90,8 @@ Host:
 - Build: `Dockerfile.listener` (Python 3.11 slim, installs `paho-mqtt`, `psycopg2-binary`)
 - Entrypoint: `python listener.py`
 - Environment: DB credentials, MQTT broker IP, topic, username/password.
-- Important: The script adapts to the payload field name – if `sensor_id` is missing, it uses `device`.
+- Important: The script uses the `device` field from incoming JSON as the `device_id` for the database.  
+  It includes an `on_disconnect` handler that automatically reconnects to the MQTT broker, preventing data loss after temporary network disruptions.
 
 ### 3. climat_web
 - Build: `Dockerfile` (Python 3.11 slim, installs `Flask`, `psycopg2`, `flask-cors`, etc.)
@@ -121,18 +122,19 @@ Host:
 
 ## 🗄️ Database Schema
 
-The core table is a TimescaleDB hypertable:
+The core table is a TimescaleDB hypertable.  
+**Note:** the actual column is `device_id`, not `sensor_id`.
 
 ```sql
-CREATE TABLE sensor_data (
-    id SERIAL,
-    sensor_id TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS sensor_data (
+    time        TIMESTAMPTZ NOT NULL,
+    device_id   TEXT NOT NULL,
     temperature DOUBLE PRECISION,
-    humidity DOUBLE PRECISION,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
+    humidity    DOUBLE PRECISION,
+    PRIMARY KEY (time, device_id)
 );
 
-SELECT create_hypertable('sensor_data', 'timestamp');
+SELECT create_hypertable('sensor_data', 'time', if_not_exists => TRUE, migrate_data => TRUE);
 -- Optional compression policy:
 -- SELECT add_compression_policy('sensor_data', INTERVAL '7 days');
 ```
@@ -274,10 +276,12 @@ sudo systemctl reload nginx
 | Symptom | Root Cause | Resolution |
 |---------|------------|------------|
 | `502 Bad Gateway` from host Nginx | Internal `climat_nginx` cannot resolve `climat_web` | Check `nginx/nginx.conf` – ensure it uses `resolver 127.0.0.11` and a variable for `proxy_pass`. |
-| `500 Internal Server Error` on `/api/*` | `climat_web` cannot resolve `db` hostname | Verify `db` service has `networks: - app-network` in compose. Apply with `docker compose down && docker compose up -d`. |
-| MQTT listener warning: `Missing 'sensor_id'` | ESP32 sends `device` instead of `sensor_id` | Edit `listener.py`: `sensor_id = data.get('sensor_id', data.get('device'))`. Rebuild listener image. |
+| `500 Internal Server Error` on `/api/*` | `climat_web` cannot resolve `db` hostname, or SQL queries use incorrect column `sensor_id` instead of `device_id` | Verify `db` service is on `app-network`. Ensure API code references `device_id` in WHERE clauses. |
+| MQTT listener warning: `Missing 'device'` | Payload does not contain `device` field | ESP32 should send `"device": "esp32_1"`. If the field is named differently, update `listener.py` accordingly. |
 | Port conflict (80/443 already in use) | Another web server on host | Map `climat_nginx` port to `127.0.0.1:8080` only. Let host Nginx manage 80/443. |
 | Database tables not created | Init scripts did not run (e.g., reused volume without execution) | Start with fresh volume: `docker compose down -v && docker compose up -d`. |
+| No new data in graphs, listener logs stopped after a certain date | MQTT connection dropped and listener lacks reconnection logic | Update `listener.py` with `on_disconnect` handler that loops reconnection. Rebuild the listener image. |
+| `/api/data` returns empty array while `/api/latest` shows data | Requested period too short (e.g., `1h`) but last record is older, or wrong `device` parameter | Use longer period (`7d`, `all`) or ensure `device=esp32_1`. Also confirm SQL uses `device_id` column. |
 
 ---
 
@@ -298,7 +302,4 @@ sudo systemctl reload nginx
 - [Flask](https://flask.palletsprojects.com/)
 - [Mosquitto MQTT broker](https://mosquitto.org/)
 - [Let’s Encrypt](https://letsencrypt.org/)
-
----
-
 ```

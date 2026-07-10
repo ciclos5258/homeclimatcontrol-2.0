@@ -1,5 +1,4 @@
-[Версия на русском](readme_ru.md)
-
+```markdown
 # 🌡️ Climat Monitor — IoT Climate Monitoring System (Docker + TimescaleDB)
 
 A production-grade IoT system for remote temperature and humidity monitoring.  
@@ -35,7 +34,7 @@ homeclimatcontrol-2.0/
 ├── docker-compose.yml
 ├── Dockerfile                  # for climat_web (Flask + Gunicorn)
 ├── Dockerfile.listener         # for climat_mqtt_listener
-├── listener.py                 # MQTT listener script
+├── listener.py                 # MQTT listener script (with auto-reconnect)
 └── .dockerignore
 ```
 
@@ -50,6 +49,7 @@ homeclimatcontrol-2.0/
 - 🐳 **Full containerisation** – backend, listener, database and internal proxy run in Docker; volumes for persistent storage
 - 🔒 **Nginx reverse proxy** – host Nginx terminates HTTPS (Let's Encrypt) and forwards to internal Docker Nginx
 - ⚙️ **Environment-based configuration** – all settings via `docker-compose.yml` (can be extended with `.env`)
+- 🔄 **Auto-reconnect MQTT listener** – survives temporary network drops
 
 ---
 
@@ -72,6 +72,7 @@ ESP32 + DHT22
            ▼
 ┌──────────────────┐
 │  climat_db       │ (TimescaleDB container)
+│  table sensor_data (device_id) │
 └────────┬─────────┘
          │
          ▼
@@ -103,6 +104,7 @@ ESP32 + DHT22
 - `climat_db` is not exposed to the host; only `climat_web` and `climat_mqtt_listener` connect internally.
 - Host Mosquitto must be reachable from the listener container (using host's Docker gateway IP or `extra_hosts`).
 - Internal `climat_nginx` uses a dynamic upstream with `resolver 127.0.0.11` to avoid startup failures when `web` isn't ready.
+- The database column for device identifier is `device_id` (formerly documented as `sensor_id`).
 
 ---
 
@@ -110,15 +112,15 @@ ESP32 + DHT22
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/latest` | Most recent reading (temperature, humidity, timestamp) |
-| `GET` | `/api/stats` | Overall statistics: total readings, average/min/max for both sensors |
-| `GET` | `/api/data?period=1h&device=esp32_main` | Time-bucketed data (raw for short periods, daily averages for long periods) |
+| `GET` | `/api/latest` | Most recent reading (any device) |
+| `GET` | `/api/stats` | Overall statistics (all devices) |
+| `GET` | `/api/data?period=1h&device=esp32_1` | Time-bucketed data (raw for short periods, daily averages for long periods) |
 | `GET` | `/api/health` | Health check (database connectivity) |
 
 ### Query parameters for `/api/data`
 
 - `period` – `1h`, `6h`, `24h`, `7d`, `30d`, `all`
-- `device` – device ID (default: `esp32_main`)
+- `device` – device ID (default: `esp32_1`)
 
 ---
 
@@ -269,10 +271,11 @@ python server.py
 | Symptom | Possible Cause | Fix |
 |---------|---------------|-----|
 | 502 Bad Gateway | Internal nginx cannot reach `climat_web` | Check upstream configuration |
-| 500 Internal Server Error | Database hostname not resolved | Verify Docker network |
-| No data | MQTT listener cannot connect | Check listener logs |
-| Ports busy | Another web server is running | Use host Nginx only |
-| Tables missing | Init scripts didn't run | Recreate database volume |
+| 500 Internal Server Error | Database hostname not resolved, or column name mismatch (using `sensor_id` instead of `device_id`) | Verify Docker network and update SQL queries |
+| No new data, listener logs stopped | MQTT connection dropped, no auto-reconnect | Update `listener.py` with `on_disconnect` handler, rebuild image |
+| `/api/data` returns empty while `/api/latest` works | Wrong `device` parameter (e.g., `esp32_main`), or period too short | Use `device=esp32_1` and longer period (e.g., `7d`) |
+| Ports busy | Another web server is running | Use host Nginx only, map internal proxy to `127.0.0.1:8080` |
+| Tables missing | Init scripts didn't run | Recreate database volume (`docker compose down -v`) |
 
 Useful commands:
 
@@ -281,7 +284,7 @@ docker compose exec web curl -s http://localhost:8000/api/latest
 
 docker compose exec db psql -U climat -d climat_monitor -c "SELECT count(*) FROM sensor_data;"
 
-docker logs climat_mqtt_listener -f
+docker compose logs mqtt_listener -f
 ```
 
 ---
@@ -306,3 +309,4 @@ docker logs climat_mqtt_listener -f
 ## License
 
 MIT
+```
