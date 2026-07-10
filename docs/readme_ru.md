@@ -1,4 +1,4 @@
-```markdown
+[English version of readme.md](readme.md)
 # 🌡️ Climat Monitor — IoT-система мониторинга температуры и влажности (Docker + TimescaleDB)
 
 Производственная IoT-система для удалённого мониторинга температуры и влажности.
