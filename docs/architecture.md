@@ -1,5 +1,3 @@
-[architecture.md](docs/architecture_ru.md)
-
 ```markdown
 # 🏗️ Climat Monitor — DevOps Architecture Document
 
