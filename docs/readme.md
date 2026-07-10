@@ -1,4 +1,4 @@
-[Документация на русском](docs/readme_ru.md)
+[Документация на русском](readme_ru.md)
 ```markdown
 # 🌡️ Climat Monitor — IoT Climate Monitoring System (Docker + TimescaleDB)
 
