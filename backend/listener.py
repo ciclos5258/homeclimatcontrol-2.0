@@ -3,6 +3,7 @@ import psycopg2
 import json
 import os
 import logging
+import time
 from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,7 +50,6 @@ def on_message(client, userdata, msg):
     logging.info(f"Message received on topic {msg.topic}: {msg.payload.decode()}")
     try:
         payload = json.loads(msg.payload.decode())
-        # ESP32 присылает поле "device" — используем его как device_id
         device_id = payload.get('device')
         temperature = payload.get('temperature')
         humidity = payload.get('humidity')
@@ -68,19 +68,40 @@ def on_message(client, userdata, msg):
         logging.error(f"Error processing message: {e}")
 
 
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        logging.info("Connected to MQTT broker")
+        # подписываемся заново при каждом успешном подключении
+        client.subscribe(MQTT_TOPIC)
+        logging.info(f"Subscribed to {MQTT_TOPIC}")
+    else:
+        logging.error(f"Connection failed, rc={rc}")
+
+
+def on_disconnect(client, userdata, rc):
+    logging.warning(f"Disconnected (rc={rc}). Reconnecting...")
+    while True:
+        try:
+            client.reconnect()
+            logging.info("Reconnected successfully")
+            break
+        except Exception as e:
+            logging.error(f"Reconnect attempt failed: {e}")
+            time.sleep(5)
+
+
 def main():
     client = mqtt.Client()
     if MQTT_USER and MQTT_PASSWORD:
         client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
     client.on_message = on_message
 
     logging.info(f"Connecting to MQTT broker at {MQTT_BROKER}:{MQTT_PORT} with user={MQTT_USER}")
     client.connect(MQTT_BROKER, MQTT_PORT, 60)
 
-    logging.info(f"Subscribing to topic: {MQTT_TOPIC}")
-    client.subscribe(MQTT_TOPIC)
-
-    logging.info("MQTT listener started. Waiting for messages...")
     client.loop_forever()
 
 
